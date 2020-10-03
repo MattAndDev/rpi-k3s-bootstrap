@@ -1,0 +1,18 @@
+- hosts: "{{ host }}"
+  become: true
+  vars_prompt:
+    - name: "host"
+      prompt: "What k3s host you want to retrieve data from"
+      private: no
+  gather_facts: true
+  tasks:
+    - name: Retrieve k3s.yml admin kubeconfig
+      fetch:
+        src: /etc/rancher/k3s/k3s.yaml
+        dest: "{{ rpi_files_local_path }}"
+        flat: yes
+    - name: Retrieve ssh pub key
+      fetch:
+        src: /home/{{ rpi_user }}/.ssh/id_rsa.pub
+        dest: "{{ rpi_files_local_path }}"
+        flat: yes

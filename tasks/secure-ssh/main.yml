@@ -1,0 +1,14 @@
+- name: Copy Secured ssh Configuration (disable root and pwd login)
+  become: true
+  copy:
+    src: sshd_config
+    dest: /etc/ssh/sshd_config
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Restart sshd service
+  become: true
+  service:
+    name: sshd
+    state: restarted

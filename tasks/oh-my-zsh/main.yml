@@ -1,0 +1,26 @@
+- name: install dependencies
+  become: yes
+  package:
+    name:
+      - git
+      - zsh
+    state: present
+
+- name: clone oh-my-zsh for users
+  become: yes
+  become_user: "{{ user }}"
+  command: "git clone https://github.com/robbyrussell/oh-my-zsh.git .oh-my-zsh"
+  args:
+    chdir: "~{{ user }}"
+    creates: "~{{ user }}/.oh-my-zsh"
+
+- name: set default shell for users
+  become: yes
+  user:
+    name: "{{ user }}"
+    shell: /bin/zsh
+
+- name: Copy default .zshrc
+  copy:
+    src: ./.zshrc
+    dest: /home/{{ user }}/

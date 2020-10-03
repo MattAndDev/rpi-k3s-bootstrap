@@ -1,0 +1,87 @@
+##############################
+# logging in with default user
+##############################
+- hosts: raspberrypi.local
+  vars:
+    ansible_user: "{{ rpi_default_user }}"
+    ansible_ssh_pass: "{{ rpi_default_password }}"
+    ansible_sudo_pass: "{{ rpi_default_password }}"
+    ansible_port: 22
+  become: yes
+  tasks:
+    - name: Add {{ rpi_user }} and {{ rpi_user_group }}
+      import_tasks: ../../tasks/user-and-group/main.yml
+      vars:
+        user: "{{ rpi_user }}"
+        group: "{{ rpi_user_group }}"
+
+    - name: Set authorized key for "{{ rpi_user }}" user
+      authorized_key:
+        user: "{{ rpi_user }}"
+        state: present
+        key: "{{ rpi_user_pub_key_content }}"
+
+    - name: Secure ssh
+      import_tasks: ../../tasks/secure-ssh/main.yml
+
+##############################
+# logging in with new user
+##############################
+
+- hosts: raspberrypi.local
+  become: yes
+  tasks:
+    - name: Reboot to kill any open ssh session with default user
+      reboot:
+
+    - name: kill the {{ rpi_default_user }} user
+      user:
+        name: "{{ rpi_default_user }}"
+        state: absent
+
+    - name: Create ssh key for {{ rpi_user }} if not existing
+      become: false
+      openssh_keypair:
+        path: ~/.ssh/id_rsa
+
+    - name: Update /etc/hosts with new hostname
+      lineinfile:
+        dest: /etc/hosts
+        regexp: "^127.0.1.1\t{{ rpi_hostname }}$"
+        line: "127.0.1.1\t{{ rpi_hostname }}"
+        state: present
+
+    - name: Set the hostname
+      command: hostnamectl set-hostname "{{ rpi_hostname }}"
+
+    - name: Configure static IP in  /etc/dhcpcd.conf
+      lineinfile:
+        dest: /etc/dhcpcd.conf
+        regexp: "{{ item.regexp }}"
+        line: "{{ item.line }}"
+        state: present
+      with_items:
+        - {
+            regexp: "^interface eth[0-9]$",
+            line: "interface {{ rpi_dhcpcd_interface }}",
+          }
+        - {
+            regexp: "^static ip_address",
+            line: "static ip_address={{ rpi_dhcpcd_ip_address }}",
+          }
+        - {
+            regexp: "^static routers",
+            line: "static routers={{ rpi_dhcpcd_routers }}",
+          }
+        - {
+            regexp: "^static domain_name_servers",
+            line: "static domain_name_servers={{ rpi_dhcpcd_dns_servers }}",
+          }
+    - name: Install oh-my-zsh
+      import_tasks: ../../tasks/oh-my-zsh/main.yml
+      vars:
+        user: "{{ rpi_user }}"
+    - name: Shutdown server
+      shell: poweroff
+      async: 1
+      poll: 0

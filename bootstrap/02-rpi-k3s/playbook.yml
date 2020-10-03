@@ -1,0 +1,123 @@
+- hosts: "{{ host }}"
+  become: true
+  vars_prompt:
+    - name: "host"
+      prompt: "What k3s host you want to provision"
+      private: no
+    - name: "is_master"
+      prompt: "Is the machine provisioned a master node? (control plane)"
+      private: no
+      default: true
+  vars:
+    kernel_flags: cgroup_enable=cpuset cgroup_enable=memory cgroup_memory=1
+  gather_facts: true
+  tasks:
+    - name: Update all packages to the latest version
+      apt:
+        upgrade: dist
+
+    - name: Upgrade all packages to the latest version
+      apt:
+        name: "*"
+        state: latest
+
+    - name: ensure legacy binaries are installed (iptables)
+      apt:
+        pkg:
+          - iptables
+          - arptables
+          - ebtables
+
+    - name: switch to legacy versions (iptables)
+      shell: |
+        update-alternatives --set iptables /usr/sbin/iptables-legacy &&
+        update-alternatives --set ip6tables /usr/sbin/ip6tables-legacy &&
+        update-alternatives --set arptables /usr/sbin/arptables-legacy &&
+        update-alternatives --set ebtables /usr/sbin/ebtables-legacy &&
+      ignore_errors: yes
+    - command: 'grep "{{ kernel_flags }}" /boot/cmdline.txt'
+      register: test_cmdline
+      ignore_errors: yes
+
+    - name: set required kernel configuration flags
+      lineinfile:
+        path: /boot/cmdline.txt
+        backrefs: true
+        state: present
+        regexp: "(.*)$"
+        line: '\1 {{ kernel_flags }}  '
+      when: test_cmdline.stdout == ""
+
+    - name: Install the package "socat" for ipv6/4 loopback service
+      apt:
+        name: socat
+
+    - name: copy loopback-6-4-80.service
+      copy:
+        src: ./templates/loopback-6-4-80.service
+        dest: /etc/systemd/system/loopback-6-4-80.service
+        owner: root
+        group: root
+        mode: 0715
+      when: is_master|bool
+
+    - name: start loopback-6-4-80.service
+      service:
+        name: loopback-6-4-80.service
+        state: started
+      when: is_master|bool
+
+    - name: copy loopback-6-4-443.service
+      copy:
+        src: ./templates/loopback-6-4-443.service
+        dest: /etc/systemd/system/loopback-6-4-443.service
+        owner: root
+        group: root
+        mode: 0715
+      when: is_master|bool
+
+    - name: start loopback-6-4-443.service
+      service:
+        name: loopback-6-4-443.service
+        state: started
+      when: is_master|bool
+
+    - name: enable loopback ipv6 to ipv4 service
+      service:
+        name: loopback-6-4.service
+        state: started
+        enabled: yes
+      when: is_master|bool
+
+    - name: Reboot to apply swap config and boot config changes
+      reboot:
+      when: test_cmdline.stdout == ""
+
+    - name: install k3s worker node with master ip {{ k3s_master_ip }}
+      environment:
+        K3S_URL: https://{{k3s_master_ip}}:6443
+        K3S_TOKEN: "{{ k3s_master_token }}"
+      shell: curl -sfL https://get.k3s.io | sh -
+      ignore_errors: yes
+      when: not is_master|bool
+    - name: install k3s master node
+      shell: curl -sfL https://get.k3s.io | sh -
+      ignore_errors: yes
+      when: is_master|bool
+    - name: Allow {{ rpi_user }} to read kubectl config
+      file:
+        path: /etc/rancher/k3s/k3s.yaml
+        owner: "{{ rpi_user }}"
+        group: "{{ rpi_user_group }}"
+      when: is_master|bool
+    - name: Install oh-my-zsh
+      import_tasks: ../../../tasks/oh-my-zsh/main.yml
+      vars:
+        user: "{{ rpi_user }}"
+    - name: Reboot to ensure changes are applied
+      reboot:
+    - name: Restart service k3s after reboot
+      service:
+        name: k3s
+        state: restarted
+      when: is_master|bool

@@ -1,0 +1,69 @@
+all:
+  vars:
+    # defaults as from raspbian
+    rpi_default_user: pi
+    rpi_default_password: raspberry
+
+    #####
+    # rpi config
+    #####
+
+    # rpi secure user and group
+    rpi_user: bot
+    rpi_user_group: bot
+
+    # the {{ rpi_user }} will have password-less sudo
+    # yet ansible requires a password at setup time to not create a locked user
+    rpi_user_password: some_secret
+
+    # the ssh public key you will use to connect to your rpis
+    # you can use your default keys or create custom ones
+    rpi_user_pub_key_content: "{{lookup('file', '/absolute/path/to/.ssh/id_rsa.pub')}}"
+
+    # hostname and static ip (unique to every rpi)
+
+    # should be unique for each pi
+    rpi_hostname: k3s-master-1 # change to: k3s-worker-1 for worker
+    # needs to be free within your local network
+    rpi_dhcpcd_ip_address: 192.168.0.10/24 # change to:  192.168.0.11/24 for worker
+
+    # shared dhcpcd for all rpis
+    rpi_dhcpcd_interface: eth0
+    # your router IP
+    rpi_dhcpcd_dns_servers: 192.168.0.1
+    # your router IP
+    rpi_dhcpcd_routers: 192.168.0.1
+
+    #####
+    # Ansible
+    #####
+
+    # default ansible variables
+    ansible_user: "{{ rpi_user }}"
+    ansible_sudo_pass: "{{ rpi_user_password }}"
+    ansible_ssh_private_key_file: /absolute/path/to/.ssh/id_rsa
+    ansible_port: 4242
+
+    # Host Key checking not working on osx with sshpass
+    # you might do not need this on linux
+    ansible_ssh_common_args: -o StrictHostKeyChecking=no
+
+    #####
+    # k3s config for worker nodes
+    #####
+
+    # ip of master node
+    k3s_master_ip: 192.168.0.10
+    # can be found at /var/lib/rancher/k3s/server/node-token on master node
+    k3s_master_token: some_token
+
+    #####
+    # path for file retrieval
+    #####
+
+    rpi_files_local_path: /path/to/some/place
+
+  hosts:
+    raspberrypi.local:
+    k3s-master-1.local:
+    k3s-worker-1.local:
